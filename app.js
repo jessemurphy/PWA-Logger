@@ -135,6 +135,26 @@ function formatValue(tracker, v) {
   return tracker.unit ? `${s} ${tracker.unit}` : s;
 }
 
+// Money for summary surfaces (stat strip, list rows): never show cents, and
+// compact to $405K / $1.2M at high amounts so more stats fit on screen.
+// The entries log keeps full formatValue precision — that's the raw record.
+function formatMoneyCompact(v) {
+  const sign = v < 0 ? "-" : "";
+  const abs = Math.abs(v);
+  if (abs >= 1000000) {
+    const m = abs / 1000000;
+    return sign + "$" + (m >= 10 ? Math.round(m) : Math.round(m * 10) / 10) + "M";
+  }
+  if (abs >= 100000) return sign + "$" + Math.round(abs / 1000) + "K";
+  return sign + "$" + Math.round(abs).toLocaleString();
+}
+
+function formatSummaryValue(tracker, v) {
+  if (v === null || v === undefined || isNaN(v)) return "—";
+  if (tracker.type === "money") return formatMoneyCompact(v);
+  return formatValue(tracker, v);
+}
+
 function formatDate(dstr) {
   const [y, m, d] = dstr.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
@@ -219,7 +239,7 @@ function renderList() {
     const valWrap = document.createElement("div");
     const val = document.createElement("div");
     val.className = "row-value";
-    val.textContent = last ? formatValue(tracker, last.value) : "—";
+    val.textContent = last ? formatSummaryValue(tracker, last.value) : "—";
     const delta = document.createElement("div");
     delta.className = "row-delta";
     if (last && prev !== undefined) {
@@ -228,7 +248,7 @@ function renderList() {
         delta.textContent = "—";
         delta.classList.add("delta-flat");
       } else {
-        delta.textContent = (d > 0 ? "▲ " : "▼ ") + formatValue(tracker, Math.abs(d));
+        delta.textContent = (d > 0 ? "▲ " : "▼ ") + formatSummaryValue(tracker, Math.abs(d));
         delta.classList.add(d > 0 ? "delta-up" : "delta-down");
       }
     } else {
@@ -343,8 +363,8 @@ function renderStats(tracker) {
     const entries = trackerEntries(tracker.id); // ascending by date
     const total = points.reduce((s, p) => s + p.value, 0);
     const last30 = points.filter((p) => daysAgo(p.date) <= 30).reduce((s, p) => s + p.value, 0);
-    addStat("TOTAL", formatValue(tracker, total));
-    addStat("LAST 30D", formatValue(tracker, last30));
+    addStat("TOTAL", formatSummaryValue(tracker, total));
+    addStat("LAST 30D", formatSummaryValue(tracker, last30));
 
     // Rate over the whole tracked span (first entry through today), expressed in
     // the tracker's own timescale; a daily tracker slower than 1/day flips to
@@ -358,7 +378,7 @@ function renderStats(tracker) {
     }
 
     const best = points.reduce((a, b) => (b.value > a.value ? b : a));
-    addStat("BEST " + FREQ_BUCKET_NAME[freq].toUpperCase(), formatValue(tracker, best.value),
+    addStat("BEST " + FREQ_BUCKET_NAME[freq].toUpperCase(), formatSummaryValue(tracker, best.value),
       formatBucketLabel(best.date, freq));
 
     const dates = [...new Set(entries.map((e) => e.date))];
@@ -375,20 +395,20 @@ function renderStats(tracker) {
   } else {
     const first = points[0], last = points[points.length - 1];
     const change = last.value - first.value;
-    addStat("CURRENT", formatValue(tracker, last.value));
-    addStat("SINCE START", (change >= 0 ? "+" : "") + formatValue(tracker, change));
+    addStat("CURRENT", formatSummaryValue(tracker, last.value));
+    addStat("SINCE START", (change >= 0 ? "+" : "") + formatSummaryValue(tracker, change));
 
     const high = points.reduce((a, b) => (b.value > a.value ? b : a));
     const low = points.reduce((a, b) => (b.value < a.value ? b : a));
-    addStat("HIGH", formatValue(tracker, high.value), formatBucketLabel(high.date, freq));
-    addStat("LOW", formatValue(tracker, low.value), formatBucketLabel(low.date, freq));
+    addStat("HIGH", formatSummaryValue(tracker, high.value), formatBucketLabel(high.date, freq));
+    addStat("LOW", formatSummaryValue(tracker, low.value), formatBucketLabel(low.date, freq));
 
     // Average movement per day/week/month/year across the tracked span.
     const spanDays = dateDiffDays(first.date, last.date);
     if (points.length >= 2 && spanDays > 0) {
       const perUnit = change / (spanDays / FREQ_DAYS[freq]);
       addStat("AVG Δ / " + FREQ_UNIT[freq].toUpperCase(),
-        (perUnit >= 0 ? "+" : "") + formatValue(tracker, perUnit));
+        (perUnit >= 0 ? "+" : "") + formatSummaryValue(tracker, perUnit));
     }
 
     addStat("LOGGED", points.length + (points.length === 1 ? " entry" : " entries"));
@@ -426,10 +446,6 @@ function drawChart(canvas, points, tracker) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  const padL = 46, padR = 12, padT = 14, padB = 24;
-  const plotW = cssW - padL - padR;
-  const plotH = cssH - padT - padB;
-
   if (points.length === 0) {
     ctx.fillStyle = "#7B818C";
     ctx.font = "13px Inter, sans-serif";
@@ -445,12 +461,23 @@ function drawChart(canvas, points, tracker) {
   min -= spread * 0.08;
   max += spread * 0.08;
 
+  // Size the left gutter to the widest y label, so long values (e.g. a
+  // negative "-391.8k") don't get their leading characters clipped.
+  ctx.font = "10px 'IBM Plex Mono', monospace";
+  const ySteps = 4;
+  const yLabels = [];
+  for (let i = 0; i <= ySteps; i++) {
+    yLabels.push(String(shortNum(min + ((max - min) * i) / ySteps, tracker)));
+  }
+  const labelW = Math.max(...yLabels.map((l) => ctx.measureText(l).width));
+  const padL = Math.max(46, Math.ceil(labelW) + 14), padR = 12, padT = 14, padB = 24;
+  const plotW = cssW - padL - padR;
+  const plotH = cssH - padT - padB;
+
   // gridlines + y labels
   ctx.strokeStyle = "rgba(255,255,255,0.07)";
   ctx.fillStyle = "#7B818C";
-  ctx.font = "10px 'IBM Plex Mono', monospace";
   ctx.textAlign = "right";
-  const ySteps = 4;
   for (let i = 0; i <= ySteps; i++) {
     const v = min + ((max - min) * i) / ySteps;
     const y = padT + plotH - (i / ySteps) * plotH;
