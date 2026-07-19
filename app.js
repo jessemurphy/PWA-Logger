@@ -44,6 +44,48 @@ function trackerFrequency(tracker) {
   return tracker.frequency || "daily";
 }
 
+// Which native input widget matches a tracker's frequency: a Yearly net-worth
+// tracker just needs a year, Monthly just needs a month, otherwise a full date.
+function frequencyInputType(frequency) {
+  if (frequency === "yearly") return "number";
+  if (frequency === "monthly") return "month";
+  return "date";
+}
+
+function configureDateInput(input, frequency) {
+  input.type = frequencyInputType(frequency);
+  if (input.type === "number") {
+    input.min = "1900";
+    input.max = "2200";
+    input.step = "1";
+    input.placeholder = "year";
+  } else {
+    input.removeAttribute("min");
+    input.removeAttribute("max");
+    input.removeAttribute("step");
+    input.placeholder = "";
+  }
+}
+
+// yyyy-mm-dd -> whatever the widget for this frequency expects ("2026", "2026-07", or "2026-07-19")
+function toInputValue(dateStr, frequency) {
+  const [y, m] = dateStr.split("-");
+  if (frequency === "yearly") return y;
+  if (frequency === "monthly") return `${y}-${m}`;
+  return dateStr;
+}
+
+// Whatever the widget produced -> a full yyyy-mm-dd (defaulting to day/month 01), or null if invalid
+function fromInputValue(inputValue, frequency) {
+  if (frequency === "yearly") {
+    return /^\d{4}$/.test(inputValue) ? `${inputValue}-01-01` : null;
+  }
+  if (frequency === "monthly") {
+    return /^\d{4}-\d{2}$/.test(inputValue) ? `${inputValue}-01` : null;
+  }
+  return inputValue || null;
+}
+
 // Collapses an actual entry date down to the start of its bucket (day/week/month/year).
 function bucketKey(dateStr, frequency) {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -92,6 +134,16 @@ function formatDate(dstr) {
   const [y, m, d] = dstr.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+// Entry-list date display respecting frequency: yearly trackers just show "2026",
+// monthly show "Jul 2026" — matching what was actually entered.
+function formatEntryDate(dstr, frequency) {
+  const [y, m, d] = dstr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (frequency === "yearly") return String(y);
+  if (frequency === "monthly") return dt.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  return formatDate(dstr);
 }
 function formatDateShort(dstr) {
   const [y, m, d] = dstr.split("-").map(Number);
@@ -421,15 +473,20 @@ function hexAlpha(hex, alpha) {
 function renderQuickAdd(tracker) {
   const numWrap = document.getElementById("quickadd-number");
   const countWrap = document.getElementById("quickadd-count");
+  const freq = trackerFrequency(tracker);
   if (tracker.type === "count") {
     numWrap.classList.add("hidden");
     countWrap.classList.remove("hidden");
-    document.getElementById("qa-count-date").value = todayStr();
+    const countDateEl = document.getElementById("qa-count-date");
+    configureDateInput(countDateEl, freq);
+    countDateEl.value = toInputValue(todayStr(), freq);
     document.getElementById("qa-count-value").value = "";
   } else {
     countWrap.classList.add("hidden");
     numWrap.classList.remove("hidden");
-    document.getElementById("qa-date").value = todayStr();
+    const dateEl = document.getElementById("qa-date");
+    configureDateInput(dateEl, freq);
+    dateEl.value = toInputValue(todayStr(), freq);
     document.getElementById("qa-value").value = "";
     document.getElementById("qa-value").placeholder = tracker.unit ? `value (${tracker.unit})` : "value";
   }
@@ -455,7 +512,7 @@ function renderEntries(tracker) {
     row.className = "entry-row";
     const date = document.createElement("div");
     date.className = "entry-date";
-    date.textContent = formatDate(e.date);
+    date.textContent = formatEntryDate(e.date, trackerFrequency(tracker));
     const note = document.createElement("div");
     note.className = "entry-note";
     note.textContent = "";
@@ -489,8 +546,12 @@ function renderEntries(tracker) {
 function openEntryModal(entryId) {
   const entry = state.entries.find((e) => e.id === entryId);
   if (!entry) return;
+  const tracker = state.trackers.find((t) => t.id === entry.trackerId) || {};
+  const freq = trackerFrequency(tracker);
   editingEntryId = entryId;
-  document.getElementById("ee-date").value = entry.date;
+  const dateEl = document.getElementById("ee-date");
+  configureDateInput(dateEl, freq);
+  dateEl.value = toInputValue(entry.date, freq);
   document.getElementById("ee-value").value = entry.value;
   document.getElementById("entry-modal-overlay").classList.remove("hidden");
 }
@@ -503,9 +564,11 @@ function closeEntryModal() {
 function saveEntryFromModal() {
   const entry = state.entries.find((e) => e.id === editingEntryId);
   if (!entry) return;
-  const date = document.getElementById("ee-date").value;
+  const tracker = state.trackers.find((t) => t.id === entry.trackerId) || {};
+  const freq = trackerFrequency(tracker);
+  const date = fromInputValue(document.getElementById("ee-date").value, freq);
   const raw = document.getElementById("ee-value").value;
-  if (!date) { toast("Pick a date"); return; }
+  if (!date) { toast(freq === "yearly" ? "Enter a valid year" : freq === "monthly" ? "Pick a month" : "Pick a date"); return; }
   if (raw === "") { toast("Enter a value"); return; }
   const value = Number(raw);
   if (isNaN(value)) { toast("That's not a number"); return; }
@@ -613,7 +676,13 @@ function saveTrackerFromModal() {
 /* ---------- entry add ---------- */
 function addNumberEntry() {
   const tracker = state.trackers.find((t) => t.id === currentTrackerId);
-  const date = document.getElementById("qa-date").value || todayStr();
+  const freq = trackerFrequency(tracker);
+  const dateInput = document.getElementById("qa-date");
+  const date = fromInputValue(dateInput.value, freq);
+  if (!date) {
+    toast(freq === "yearly" ? "Enter a valid year" : freq === "monthly" ? "Pick a month" : "Pick a date");
+    return;
+  }
   const raw = document.getElementById("qa-value").value;
   if (raw === "") { toast("Enter a value"); return; }
   const value = Number(raw);
@@ -754,8 +823,10 @@ function init() {
 
   document.getElementById("qa-tally").addEventListener("click", () => addCountEntry(1, todayStr()));
   document.getElementById("qa-count-add").addEventListener("click", () => {
+    const tracker = state.trackers.find((t) => t.id === currentTrackerId);
+    const freq = trackerFrequency(tracker);
+    const date = fromInputValue(document.getElementById("qa-count-date").value, freq) || todayStr();
     const amt = Number(document.getElementById("qa-count-value").value || "1");
-    const date = document.getElementById("qa-count-date").value || todayStr();
     if (isNaN(amt) || amt === 0) { toast("Enter an amount"); return; }
     addCountEntry(amt, date);
   });

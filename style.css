@@ -356,6 +356,7 @@ canvas#chart{width:100%;display:block;}
   padding:10px;
 }
 .quickadd input[type="date"],
+.quickadd input[type="month"],
 .quickadd input[type="number"],
 .quickadd input[type="text"]{
   background:var(--surface-2);
@@ -368,6 +369,7 @@ canvas#chart{width:100%;display:block;}
 }
 .quickadd input[type="date"]{flex:0 0 auto; width:132px; color-scheme: dark;}
 .quickadd input[type="number"]{flex:1; min-width:0;}
+#qa-date, #qa-count-date{flex:0 0 auto; width:132px; color-scheme: dark;}
 .quickadd-add{
   background:var(--brass);
   color:#181307;
@@ -430,6 +432,9 @@ canvas#chart{width:100%;display:block;}
   margin-bottom:6px;
 }
 .field input[type="text"],
+.field input[type="date"],
+.field input[type="month"],
+.field input[type="number"],
 .field select{
   width:100%;
   background:var(--surface-2);
@@ -438,6 +443,10 @@ canvas#chart{width:100%;display:block;}
   font-size:14px;
   border-radius:8px;
   padding:11px 12px;
+}
+.field input[type="date"],
+.field input[type="month"]{
+  color-scheme: dark;
 }
 .type-choices{display:flex;gap:8px;}
 .type-choice{
