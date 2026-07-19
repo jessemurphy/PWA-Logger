@@ -44,27 +44,32 @@ function trackerFrequency(tracker) {
   return tracker.frequency || "daily";
 }
 
-// Which native input widget matches a tracker's frequency: a Yearly net-worth
-// tracker just needs a year, Monthly just needs a month, otherwise a full date.
-function frequencyInputType(frequency) {
-  if (frequency === "yearly") return "number";
-  if (frequency === "monthly") return "month";
-  return "date";
-}
-
+// Which widget matches a tracker's frequency: Yearly gets a <select> of years
+// (iOS renders it as a native scroll wheel), Monthly a month picker, otherwise
+// a full date input. Swapping input <-> select replaces the element in the DOM,
+// so callers must use the returned element, not the one they passed in.
 function configureDateInput(input, frequency) {
-  input.type = frequencyInputType(frequency);
-  if (input.type === "number") {
-    input.min = "1900";
-    input.max = "2200";
-    input.step = "1";
-    input.placeholder = "year";
-  } else {
-    input.removeAttribute("min");
-    input.removeAttribute("max");
-    input.removeAttribute("step");
-    input.placeholder = "";
+  const wantSelect = frequency === "yearly";
+  let el = input;
+  if (wantSelect !== (input.tagName === "SELECT")) {
+    el = document.createElement(wantSelect ? "select" : "input");
+    el.id = input.id;
+    el.className = input.className;
+    const inlineStyle = input.getAttribute("style");
+    if (inlineStyle) el.setAttribute("style", inlineStyle);
+    input.replaceWith(el);
   }
+  if (wantSelect) {
+    if (!el.options.length) {
+      const thisYear = new Date().getFullYear();
+      for (let y = thisYear + 1; y >= 1900; y--) {
+        el.add(new Option(String(y), String(y)));
+      }
+    }
+  } else {
+    el.type = frequency === "monthly" ? "month" : "date";
+  }
+  return el;
 }
 
 // yyyy-mm-dd -> whatever the widget for this frequency expects ("2026", "2026-07", or "2026-07-19")
@@ -477,15 +482,13 @@ function renderQuickAdd(tracker) {
   if (tracker.type === "count") {
     numWrap.classList.add("hidden");
     countWrap.classList.remove("hidden");
-    const countDateEl = document.getElementById("qa-count-date");
-    configureDateInput(countDateEl, freq);
+    const countDateEl = configureDateInput(document.getElementById("qa-count-date"), freq);
     countDateEl.value = toInputValue(todayStr(), freq);
     document.getElementById("qa-count-value").value = "";
   } else {
     countWrap.classList.add("hidden");
     numWrap.classList.remove("hidden");
-    const dateEl = document.getElementById("qa-date");
-    configureDateInput(dateEl, freq);
+    const dateEl = configureDateInput(document.getElementById("qa-date"), freq);
     dateEl.value = toInputValue(todayStr(), freq);
     document.getElementById("qa-value").value = "";
     document.getElementById("qa-value").placeholder = tracker.unit ? `value (${tracker.unit})` : "value";
@@ -549,8 +552,7 @@ function openEntryModal(entryId) {
   const tracker = state.trackers.find((t) => t.id === entry.trackerId) || {};
   const freq = trackerFrequency(tracker);
   editingEntryId = entryId;
-  const dateEl = document.getElementById("ee-date");
-  configureDateInput(dateEl, freq);
+  const dateEl = configureDateInput(document.getElementById("ee-date"), freq);
   dateEl.value = toInputValue(entry.date, freq);
   document.getElementById("ee-value").value = entry.value;
   document.getElementById("entry-modal-overlay").classList.remove("hidden");

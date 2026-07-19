@@ -48,7 +48,7 @@ input,select{font-family:inherit;}
   top:0;
   z-index:20;
   background:linear-gradient(var(--bg) 82%, transparent);
-  padding:22px 0 14px;
+  padding:calc(22px + env(safe-area-inset-top, 0px)) 0 14px;
   display:flex;
   align-items:baseline;
   justify-content:space-between;
@@ -169,7 +169,7 @@ input,select{font-family:inherit;}
 .fab{
   position:fixed;
   right:20px;
-  bottom:24px;
+  bottom:calc(24px + env(safe-area-inset-bottom, 0px));
   width:56px;height:56px;
   border-radius:50%;
   background:var(--brass);
@@ -187,7 +187,7 @@ input,select{font-family:inherit;}
 
 /* ---------- Detail view ---------- */
 .detail-head{
-  padding-top:6px;
+  padding-top:calc(6px + env(safe-area-inset-top, 0px));
   display:flex;
   align-items:flex-start;
   gap:12px;
@@ -344,7 +344,7 @@ canvas#chart{width:100%;display:block;}
   position:sticky;
   bottom:0;
   background:linear-gradient(transparent, var(--bg) 22%);
-  padding:14px 0 10px;
+  padding:14px 0 calc(10px + env(safe-area-inset-bottom, 0px));
   margin-top:8px;
 }
 .quickadd-inner{
@@ -358,7 +358,8 @@ canvas#chart{width:100%;display:block;}
 .quickadd input[type="date"],
 .quickadd input[type="month"],
 .quickadd input[type="number"],
-.quickadd input[type="text"]{
+.quickadd input[type="text"],
+.quickadd select{
   background:var(--surface-2);
   border:1px solid var(--grid-strong);
   color:var(--ink);
@@ -409,7 +410,7 @@ canvas#chart{width:100%;display:block;}
   border:1px solid var(--grid-strong);
   border-bottom:none;
   border-radius:16px 16px 0 0;
-  padding:20px 20px 28px;
+  padding:20px 20px calc(28px + env(safe-area-inset-bottom, 0px));
   max-height:88vh;
   overflow-y:auto;
   animation:slideUp .18s ease-out;
@@ -445,7 +446,8 @@ canvas#chart{width:100%;display:block;}
   padding:11px 12px;
 }
 .field input[type="date"],
-.field input[type="month"]{
+.field input[type="month"],
+.field select{
   color-scheme: dark;
 }
 .type-choices{display:flex;gap:8px;}
@@ -504,7 +506,7 @@ canvas#chart{width:100%;display:block;}
 /* ---------- Toast ---------- */
 .toast{
   position:fixed;
-  bottom:26px;
+  bottom:calc(26px + env(safe-area-inset-bottom, 0px));
   left:50%;
   transform:translateX(-50%);
   background:var(--ink);
@@ -524,6 +526,15 @@ canvas#chart{width:100%;display:block;}
 }
 
 .hidden{display:none !important;}
+
+.app-version{
+  margin-top:14px;
+  text-align:center;
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.08em;
+  color:var(--muted);
+}
 
 .install-banner{
   display:flex;

@@ -100,7 +100,7 @@
     <h2 id="tracker-modal-title">New tracker</h2>
     <div class="field">
       <label>Name</label>
-      <input type="text" id="tk-name" placeholder="e.g. Net worth, Water intake, Cigars smoked">
+      <input type="text" id="tk-name" autocapitalize="words" placeholder="e.g. Net worth, Water intake, Cigars smoked">
     </div>
     <div class="field">
       <label>Type</label>
@@ -171,6 +171,8 @@
     <div class="modal-actions">
       <button class="btn-secondary" id="menu-close" style="flex:1;">Close</button>
     </div>
+    <!-- Keep in lockstep with the CACHE version in sw.js on every release -->
+    <div class="app-version">Ledger v4</div>
   </div>
 </div>
 
