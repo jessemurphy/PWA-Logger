@@ -303,15 +303,32 @@ function showListView() {
   renderList();
 }
 
+// Whole days between two yyyy-mm-dd dates.
+function dateDiffDays(a, b) {
+  const [y1, m1, d1] = a.split("-").map(Number);
+  const [y2, m2, d2] = b.split("-").map(Number);
+  return Math.round((new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1)) / 86400000);
+}
+
+// Round a rate to something readable: 12, 3.4, 0.8
+function roundRate(n) {
+  return n >= 10 ? Math.round(n) : Math.round(n * 10) / 10;
+}
+
+const FREQ_DAYS = { daily: 1, weekly: 7, monthly: 30.44, yearly: 365.25 };
+const FREQ_UNIT = { daily: "day", weekly: "wk", monthly: "mo", yearly: "yr" };
+const FREQ_BUCKET_NAME = { daily: "day", weekly: "week", monthly: "month", yearly: "year" };
+
 function renderStats(tracker) {
   const points = aggregate(tracker);
   const strip = document.getElementById("stat-strip");
   strip.innerHTML = "";
 
-  const addStat = (label, value) => {
+  const addStat = (label, value, sub) => {
     const s = document.createElement("div");
     s.className = "stat";
-    s.innerHTML = `<div class="stat-label">${label}</div><div class="stat-val">${value}</div>`;
+    s.innerHTML = `<div class="stat-label">${label}</div><div class="stat-val">${value}</div>` +
+      (sub ? `<div class="stat-sub">${sub}</div>` : "");
     strip.appendChild(s);
   };
 
@@ -320,18 +337,60 @@ function renderStats(tracker) {
     return;
   }
 
+  const freq = trackerFrequency(tracker);
+
   if (tracker.type === "count") {
+    const entries = trackerEntries(tracker.id); // ascending by date
     const total = points.reduce((s, p) => s + p.value, 0);
     const last30 = points.filter((p) => daysAgo(p.date) <= 30).reduce((s, p) => s + p.value, 0);
-    const avgPerLoggedDay = total / points.length;
     addStat("TOTAL", formatValue(tracker, total));
     addStat("LAST 30D", formatValue(tracker, last30));
-    addStat("AVG / DAY LOGGED", formatValue(tracker, Math.round(avgPerLoggedDay * 10) / 10));
+
+    // Rate over the whole tracked span (first entry through today), expressed in
+    // the tracker's own timescale; a daily tracker slower than 1/day flips to
+    // the more natural "every N days".
+    const spanDays = Math.max(1, daysAgo(entries[0].date) + 1);
+    const perDay = total / spanDays;
+    if (freq === "daily" && perDay < 1 && total > 0) {
+      addStat("FREQUENCY", `every ${Math.round(spanDays / total)}d`);
+    } else {
+      addStat("RATE", `${roundRate(perDay * FREQ_DAYS[freq])} / ${FREQ_UNIT[freq]}`);
+    }
+
+    const best = points.reduce((a, b) => (b.value > a.value ? b : a));
+    addStat("BEST " + FREQ_BUCKET_NAME[freq].toUpperCase(), formatValue(tracker, best.value),
+      formatBucketLabel(best.date, freq));
+
+    const dates = [...new Set(entries.map((e) => e.date))];
+    if (dates.length >= 2) {
+      let maxGap = 0;
+      for (let i = 1; i < dates.length; i++) {
+        maxGap = Math.max(maxGap, dateDiffDays(dates[i - 1], dates[i]));
+      }
+      addStat("LONGEST GAP", `${maxGap}d`);
+    }
+
+    const ago = daysAgo(dates[dates.length - 1]);
+    addStat("LAST LOGGED", ago <= 0 ? "today" : `${ago}d ago`);
   } else {
     const first = points[0], last = points[points.length - 1];
     const change = last.value - first.value;
     addStat("CURRENT", formatValue(tracker, last.value));
     addStat("SINCE START", (change >= 0 ? "+" : "") + formatValue(tracker, change));
+
+    const high = points.reduce((a, b) => (b.value > a.value ? b : a));
+    const low = points.reduce((a, b) => (b.value < a.value ? b : a));
+    addStat("HIGH", formatValue(tracker, high.value), formatBucketLabel(high.date, freq));
+    addStat("LOW", formatValue(tracker, low.value), formatBucketLabel(low.date, freq));
+
+    // Average movement per day/week/month/year across the tracked span.
+    const spanDays = dateDiffDays(first.date, last.date);
+    if (points.length >= 2 && spanDays > 0) {
+      const perUnit = change / (spanDays / FREQ_DAYS[freq]);
+      addStat("AVG Δ / " + FREQ_UNIT[freq].toUpperCase(),
+        (perUnit >= 0 ? "+" : "") + formatValue(tracker, perUnit));
+    }
+
     addStat("LOGGED", points.length + (points.length === 1 ? " entry" : " entries"));
   }
 }
