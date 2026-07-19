@@ -66,6 +66,13 @@
         <button class="range-btn" data-range="365">1Y</button>
         <button class="range-btn active" data-range="all">ALL</button>
       </div>
+      <!-- Occurrence trackers only: re-bucket the x-axis by a coarser interval -->
+      <div class="chart-range hidden" id="chart-interval">
+        <button class="range-btn active" data-interval="auto" id="interval-auto-btn">DAY</button>
+        <button class="range-btn" data-interval="monthly">MO</button>
+        <button class="range-btn" data-interval="quarterly">90D</button>
+        <button class="range-btn" data-interval="yearly">YR</button>
+      </div>
       <canvas id="chart" height="200"></canvas>
     </div>
 
@@ -172,7 +179,7 @@
       <button class="btn-secondary" id="menu-close" style="flex:1;">Close</button>
     </div>
     <!-- Keep in lockstep with the CACHE version in sw.js on every release -->
-    <div class="app-version">Ledger v6</div>
+    <div class="app-version">Ledger v7</div>
   </div>
 </div>
 

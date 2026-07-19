@@ -6,6 +6,7 @@ const COLORS = ["#C9A227", "#4F9E7A", "#5E8FC9", "#C1554B", "#A97BC9", "#5EC9B4"
 let state = { trackers: [], entries: [] };
 let currentTrackerId = null;
 let currentRange = "all";
+let currentInterval = "auto"; // chart x-axis bucketing for count trackers: auto|monthly|quarterly|yearly
 let editingTrackerId = null; // set when tracker modal is in edit mode
 let selectedColor = COLORS[0];
 let selectedType = "number";
@@ -95,6 +96,7 @@ function fromInputValue(inputValue, frequency) {
 function bucketKey(dateStr, frequency) {
   const [y, m, d] = dateStr.split("-").map(Number);
   if (frequency === "yearly") return `${y}-01-01`;
+  if (frequency === "quarterly") return `${y}-${String(Math.floor((m - 1) / 3) * 3 + 1).padStart(2, "0")}-01`;
   if (frequency === "monthly") return `${y}-${String(m).padStart(2, "0")}-01`;
   if (frequency === "weekly") {
     const dt = new Date(y, m - 1, d);
@@ -107,9 +109,10 @@ function bucketKey(dateStr, frequency) {
 }
 
 // Aggregate entries into one point per bucket, per tracker aggregation mode + frequency.
-function aggregate(tracker) {
+// freqOverride lets the chart re-bucket at a coarser interval than the tracker's own.
+function aggregate(tracker, freqOverride) {
   const entries = trackerEntries(tracker.id); // ascending by date
-  const freq = trackerFrequency(tracker);
+  const freq = freqOverride || trackerFrequency(tracker);
   const byBucket = new Map();
   for (const e of entries) {
     const key = bucketKey(e.date, freq);
@@ -182,8 +185,16 @@ function formatBucketLabel(dstr, frequency) {
   const [y, m, d] = dstr.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   if (frequency === "yearly") return String(y);
+  if (frequency === "quarterly") return `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
   if (frequency === "monthly") return dt.toLocaleDateString(undefined, { month: "short", year: "numeric" });
   return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// What the chart buckets by: the tracker's own frequency, unless a count
+// tracker has a coarser interval selected.
+function chartFrequency(tracker) {
+  if (tracker.type !== "count" || currentInterval === "auto") return trackerFrequency(tracker);
+  return currentInterval;
 }
 
 function toast(msg) {
@@ -293,6 +304,7 @@ function drawSparkline(canvas, points, color) {
 function openDetail(trackerId) {
   currentTrackerId = trackerId;
   currentRange = "all";
+  currentInterval = "auto";
   location.hash = "#/tracker/" + trackerId;
   showDetailView();
 }
@@ -305,9 +317,19 @@ function showDetailView() {
   document.getElementById("view-detail").classList.remove("hidden");
   document.getElementById("detail-title").textContent = tracker.name;
 
-  document.querySelectorAll(".range-btn").forEach((b) =>
+  document.querySelectorAll("#chart-range .range-btn").forEach((b) =>
     b.classList.toggle("active", b.dataset.range === currentRange)
   );
+
+  const intervalRow = document.getElementById("chart-interval");
+  intervalRow.classList.toggle("hidden", tracker.type !== "count");
+  if (tracker.type === "count") {
+    const freqLabel = { daily: "DAY", weekly: "WK", monthly: "MO", yearly: "YR" };
+    document.getElementById("interval-auto-btn").textContent = freqLabel[trackerFrequency(tracker)] || "DAY";
+    intervalRow.querySelectorAll(".range-btn").forEach((b) =>
+      b.classList.toggle("active", b.dataset.interval === currentInterval)
+    );
+  }
 
   renderStats(tracker);
   renderChart(tracker);
@@ -421,8 +443,39 @@ function daysAgo(dstr) {
   return Math.round((Date.now() - dt.getTime()) / 86400000);
 }
 
+// Start of the bucket after the given one, per bucketing frequency.
+function nextBucketStart(dateStr, freq) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (freq === "yearly") return `${y + 1}-01-01`;
+  if (freq === "quarterly" || freq === "monthly") {
+    const total = (m - 1) + (freq === "monthly" ? 1 : 3);
+    return `${y + Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}-01`;
+  }
+  const dt = new Date(y, m - 1, d + (freq === "weekly" ? 7 : 1));
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+// A tally tracker's quiet buckets are real zeros: fill every bucket between
+// the first logged one and today, so the trend line drops to 0 on days with
+// no occurrences instead of connecting logged days directly.
+function zeroFill(points, freq) {
+  if (points.length === 0) return points;
+  const byDate = new Map(points.map((p) => [p.date, p.value]));
+  const filled = [];
+  const end = bucketKey(todayStr(), freq);
+  let cur = points[0].date;
+  let guard = 40000; // ~100 years of daily buckets
+  while (cur <= end && guard-- > 0) {
+    filled.push({ date: cur, value: byDate.get(cur) || 0 });
+    cur = nextBucketStart(cur, freq);
+  }
+  return filled;
+}
+
 function filteredPoints(tracker) {
-  const points = aggregate(tracker);
+  const freq = chartFrequency(tracker);
+  let points = aggregate(tracker, freq);
+  if (tracker.type === "count") points = zeroFill(points, freq);
   if (currentRange === "all") return points;
   const n = Number(currentRange);
   return points.filter((p) => daysAgo(p.date) <= n);
@@ -456,15 +509,23 @@ function drawChart(canvas, points, tracker) {
 
   const vals = points.map((p) => p.value);
   let min = Math.min(...vals), max = Math.max(...vals);
-  if (min === max) { min -= 1; max += 1; }
-  const spread = max - min;
-  min -= spread * 0.08;
-  max += spread * 0.08;
+  let ySteps = 4;
+  if (tracker.type === "count") {
+    // Tallies are whole numbers: baseline at 0 and use integer gridlines only.
+    min = 0;
+    const step = Math.max(1, Math.ceil(max / 4));
+    ySteps = Math.max(1, Math.ceil(max / step));
+    max = step * ySteps;
+  } else {
+    if (min === max) { min -= 1; max += 1; }
+    const spread = max - min;
+    min -= spread * 0.08;
+    max += spread * 0.08;
+  }
 
   // Size the left gutter to the widest y label, so long values (e.g. a
   // negative "-391.8k") don't get their leading characters clipped.
   ctx.font = "10px 'IBM Plex Mono', monospace";
-  const ySteps = 4;
   const yLabels = [];
   for (let i = 0; i <= ySteps; i++) {
     yLabels.push(String(shortNum(min + ((max - min) * i) / ySteps, tracker)));
@@ -491,7 +552,7 @@ function drawChart(canvas, points, tracker) {
   // x labels (start, mid, end)
   ctx.textAlign = "center";
   const xIdxs = points.length === 1 ? [0] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
-  const freq = trackerFrequency(tracker);
+  const freq = chartFrequency(tracker);
   xIdxs.forEach((idx) => {
     const x = padL + (points.length === 1 ? plotW / 2 : (idx / (points.length - 1)) * plotW);
     ctx.fillText(formatBucketLabel(points[idx].date, freq), x, cssH - 6);
@@ -529,8 +590,9 @@ function drawChart(canvas, points, tracker) {
   ctx.lineCap = "round";
   ctx.stroke();
 
-  // points
+  // points (zero-filled buckets get the line dip but no dot marker)
   points.forEach((p, i) => {
+    if (tracker.type === "count" && p.value === 0) return;
     const x = xFor(i), y = yFor(p.value);
     ctx.beginPath();
     ctx.arc(x, y, points.length > 60 ? 0 : 3, 0, Math.PI * 2);
@@ -850,6 +912,7 @@ function handleRoute() {
   const m = location.hash.match(/^#\/tracker\/(.+)$/);
   if (m && state.trackers.find((t) => t.id === m[1])) {
     currentTrackerId = m[1];
+    currentInterval = "auto";
     currentRange = "all";
     showDetailView();
   } else {
@@ -923,7 +986,16 @@ function init() {
     const btn = e.target.closest(".range-btn");
     if (!btn) return;
     currentRange = btn.dataset.range;
-    document.querySelectorAll(".range-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll("#chart-range .range-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    const tracker = state.trackers.find((t) => t.id === currentTrackerId);
+    if (tracker) renderChart(tracker);
+  });
+
+  document.getElementById("chart-interval").addEventListener("click", (e) => {
+    const btn = e.target.closest(".range-btn");
+    if (!btn) return;
+    currentInterval = btn.dataset.interval;
+    document.querySelectorAll("#chart-interval .range-btn").forEach((b) => b.classList.toggle("active", b === btn));
     const tracker = state.trackers.find((t) => t.id === currentTrackerId);
     if (tracker) renderChart(tracker);
   });
