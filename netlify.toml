@@ -1,0 +1,42 @@
+[build]
+  publish = "."
+  command = ""
+
+# The service worker and manifest should always be revalidated so a version
+# bump in sw.js actually reaches returning visitors promptly, instead of
+# sitting behind a long-lived cache.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Everything else (JS, CSS) isn't fingerprinted in its filename, so a long
+# "immutable" cache would let the browser's own HTTP cache quietly outlive a
+# service-worker version bump — always revalidate these instead and let the
+# service worker's own versioned cache (ledger-vN in sw.js) control offline use.
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Icons don't change without a filename change in practice, so these are safe
+# to cache aggressively.
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

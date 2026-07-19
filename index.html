@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#12151A">
+<meta name="description" content="Log any value — numbers, money, occurrences — by date and watch it progress.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.json">
+<title>Ledger — Track Anything Over Time</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500;1,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ===== LIST VIEW ===== -->
+  <section id="view-list">
+    <div class="topbar">
+      <div class="brand">
+        <span class="brand-mark">LDG</span>
+        <h1>Ledger</h1>
+      </div>
+      <button class="icon-btn" id="menu-btn" title="Data">⋯</button>
+    </div>
+
+    <div id="install-banner" class="install-banner hidden">
+      <span>Install Ledger on this device for one-tap, offline access.</span>
+      <button id="install-btn">Install</button>
+    </div>
+
+    <div class="ledger" id="tracker-list"></div>
+
+    <div class="empty hidden" id="empty-state">
+      <div class="empty-mark">NO ENTRIES YET</div>
+      <h3>Start a line in the ledger</h3>
+      <p>Track net worth, water intake, cigars smoked, gym sessions — anything with a number and a date. Tap + to begin.</p>
+    </div>
+  </section>
+
+  <!-- ===== DETAIL VIEW ===== -->
+  <section id="view-detail" class="hidden">
+    <div class="detail-head">
+      <button class="back-btn" id="back-btn">‹ all trackers</button>
+    </div>
+    <div class="detail-title-row">
+      <h2 class="detail-title" id="detail-title">—</h2>
+      <div class="detail-tools">
+        <button class="icon-btn" id="edit-tracker-btn" title="Edit">✎</button>
+        <button class="icon-btn" id="delete-tracker-btn" title="Delete">🗑</button>
+      </div>
+    </div>
+
+    <div class="stat-strip" id="stat-strip"></div>
+
+    <div class="chart-wrap">
+      <div class="chart-range" id="chart-range">
+        <button class="range-btn" data-range="30">30D</button>
+        <button class="range-btn" data-range="90">90D</button>
+        <button class="range-btn" data-range="365">1Y</button>
+        <button class="range-btn active" data-range="all">ALL</button>
+      </div>
+      <canvas id="chart" height="200"></canvas>
+    </div>
+
+    <div id="quickadd-number" class="quickadd hidden">
+      <div class="quickadd-inner">
+        <input type="date" id="qa-date">
+        <input type="number" id="qa-value" step="any" placeholder="value" inputmode="decimal">
+        <button class="quickadd-add" id="qa-add">Add</button>
+      </div>
+    </div>
+
+    <div id="quickadd-count" class="quickadd hidden">
+      <div class="quickadd-inner">
+        <button class="tally-add" id="qa-tally">+ Log one now</button>
+        <input type="date" id="qa-count-date" style="width:132px;">
+        <input type="number" id="qa-count-value" step="1" placeholder="n" style="max-width:64px;flex:0 0 auto;">
+        <button class="quickadd-add" id="qa-count-add">Add</button>
+      </div>
+    </div>
+
+    <div class="section-label" id="entries-label">Entries</div>
+    <div class="entries" id="entries-list"></div>
+  </section>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Tracker add/edit modal -->
+<div class="modal-overlay hidden" id="tracker-modal-overlay">
+  <div class="modal">
+    <h2 id="tracker-modal-title">New tracker</h2>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="tk-name" placeholder="e.g. Net worth, Water intake, Cigars smoked">
+    </div>
+    <div class="field">
+      <label>Type</label>
+      <div class="type-choices">
+        <div class="type-choice selected" data-type="number">Number<br><span style="opacity:.6;font-size:10px">snapshot</span></div>
+        <div class="type-choice" data-type="money">Money<br><span style="opacity:.6;font-size:10px">snapshot</span></div>
+        <div class="type-choice" data-type="count">Occurrence<br><span style="opacity:.6;font-size:10px">tally per day</span></div>
+      </div>
+    </div>
+    <div class="field" id="unit-field">
+      <label>Unit label (optional)</label>
+      <input type="text" id="tk-unit" placeholder="e.g. lbs, cups, $">
+    </div>
+    <div class="field">
+      <label>How often you'll log it — sets the graph's timescale</label>
+      <div class="type-choices" id="freq-choices">
+        <div class="type-choice" data-freq="daily">Daily</div>
+        <div class="type-choice" data-freq="weekly">Weekly</div>
+        <div class="type-choice" data-freq="monthly">Monthly</div>
+        <div class="type-choice" data-freq="yearly">Yearly</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Color</label>
+      <div class="color-choices" id="color-choices"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="tracker-cancel">Cancel</button>
+      <button class="btn-primary" id="tracker-save">Save tracker</button>
+    </div>
+  </div>
+</div>
+
+<!-- Entry edit modal -->
+<div class="modal-overlay hidden" id="entry-modal-overlay">
+  <div class="modal">
+    <h2>Edit entry</h2>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="ee-date">
+    </div>
+    <div class="field">
+      <label>Value</label>
+      <input type="number" id="ee-value" step="any" inputmode="decimal">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary btn-danger" id="ee-delete">Delete</button>
+      <button class="btn-primary" id="ee-save">Save</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="ee-cancel" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Data menu modal -->
+<div class="modal-overlay hidden" id="menu-modal-overlay">
+  <div class="modal">
+    <h2>Your data</h2>
+    <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-top:-8px;">
+      Everything lives only in this browser (localStorage). Export a backup regularly, especially before clearing site data or switching devices.
+    </p>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="export-btn">⇩ Export JSON</button>
+      <button class="btn-secondary" id="import-btn">⇧ Import JSON</button>
+    </div>
+    <input type="file" id="import-file" accept="application/json" class="hidden">
+    <div class="modal-actions">
+      <button class="btn-secondary" id="menu-close" style="flex:1;">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
