@@ -361,8 +361,18 @@ const FREQ_DAYS = { daily: 1, weekly: 7, monthly: 30.44, yearly: 365.25 };
 const FREQ_UNIT = { daily: "day", weekly: "wk", monthly: "mo", yearly: "yr" };
 const FREQ_BUCKET_NAME = { daily: "day", weekly: "week", monthly: "month", yearly: "year" };
 
+function rangeStatLabel() {
+  return { 30: "30D", 90: "90D", 365: "1Y", 1095: "3Y", 1825: "5Y" }[currentRange] || "ALL";
+}
+
+// Stats follow the chart's selected range: with 1Y active, every stat is
+// computed over the last year only (ALL behaves as before).
 function renderStats(tracker) {
-  const points = aggregate(tracker);
+  const allPoints = aggregate(tracker);
+  const ranged = currentRange !== "all";
+  const n = Number(currentRange);
+  const inRange = (d) => !ranged || daysAgo(d) <= n;
+  const points = allPoints.filter((p) => inRange(p.date));
   const strip = document.getElementById("stat-strip");
   strip.innerHTML = "";
 
@@ -374,33 +384,42 @@ function renderStats(tracker) {
     strip.appendChild(s);
   };
 
-  if (points.length === 0) {
+  if (allPoints.length === 0) {
     addStat("STATUS", "no data yet");
+    return;
+  }
+  if (points.length === 0) {
+    addStat("STATUS", `nothing in last ${rangeStatLabel()}`);
     return;
   }
 
   const freq = trackerFrequency(tracker);
+  const suffix = ranged ? " " + rangeStatLabel() : "";
 
   if (tracker.type === "count") {
-    const entries = trackerEntries(tracker.id); // ascending by date
+    const allEntries = trackerEntries(tracker.id); // ascending by date
+    const entries = allEntries.filter((e) => inRange(e.date));
     const total = points.reduce((s, p) => s + p.value, 0);
-    const last30 = points.filter((p) => daysAgo(p.date) <= 30).reduce((s, p) => s + p.value, 0);
-    addStat("TOTAL", formatSummaryValue(tracker, total));
-    addStat("LAST 30D", formatSummaryValue(tracker, last30));
+    addStat("TOTAL" + suffix, formatSummaryValue(tracker, total));
+    if (!ranged || n > 30) {
+      const last30 = points.filter((p) => daysAgo(p.date) <= 30).reduce((s, p) => s + p.value, 0);
+      addStat("LAST 30D", formatSummaryValue(tracker, last30));
+    }
 
-    // Rate over the whole tracked span (first entry through today), expressed in
+    // Rate over the window (first in-range entry through today), expressed in
     // the tracker's own timescale; a daily tracker slower than 1/day flips to
     // the more natural "every N days".
-    const spanDays = Math.max(1, daysAgo(entries[0].date) + 1);
+    let spanDays = Math.max(1, daysAgo(entries[0].date) + 1);
+    if (ranged) spanDays = Math.min(spanDays, n);
     const perDay = total / spanDays;
     if (freq === "daily" && perDay < 1 && total > 0) {
-      addStat("FREQUENCY", `every ${Math.round(spanDays / total)}d`);
+      addStat("FREQUENCY" + suffix, `every ${Math.round(spanDays / total)}d`);
     } else {
-      addStat("RATE", `${roundRate(perDay * FREQ_DAYS[freq])} / ${FREQ_UNIT[freq]}`);
+      addStat("RATE" + suffix, `${roundRate(perDay * FREQ_DAYS[freq])} / ${FREQ_UNIT[freq]}`);
     }
 
     const best = points.reduce((a, b) => (b.value > a.value ? b : a));
-    addStat("BEST " + FREQ_BUCKET_NAME[freq].toUpperCase(), formatSummaryValue(tracker, best.value),
+    addStat("BEST " + FREQ_BUCKET_NAME[freq].toUpperCase() + suffix, formatSummaryValue(tracker, best.value),
       formatBucketLabel(best.date, freq));
 
     const dates = [...new Set(entries.map((e) => e.date))];
@@ -409,31 +428,32 @@ function renderStats(tracker) {
       for (let i = 1; i < dates.length; i++) {
         maxGap = Math.max(maxGap, dateDiffDays(dates[i - 1], dates[i]));
       }
-      addStat("LONGEST GAP", `${maxGap}d`);
+      addStat("LONGEST GAP" + suffix, `${maxGap}d`);
     }
 
-    const ago = daysAgo(dates[dates.length - 1]);
+    const ago = daysAgo(allEntries[allEntries.length - 1].date);
     addStat("LAST LOGGED", ago <= 0 ? "today" : `${ago}d ago`);
   } else {
     const first = points[0], last = points[points.length - 1];
     const change = last.value - first.value;
-    addStat("CURRENT", formatSummaryValue(tracker, last.value));
-    addStat("SINCE START", (change >= 0 ? "+" : "") + formatSummaryValue(tracker, change));
+    addStat("CURRENT", formatSummaryValue(tracker, allPoints[allPoints.length - 1].value));
+    addStat(ranged ? "Δ " + rangeStatLabel() : "SINCE START",
+      (change >= 0 ? "+" : "") + formatSummaryValue(tracker, change));
 
     const high = points.reduce((a, b) => (b.value > a.value ? b : a));
     const low = points.reduce((a, b) => (b.value < a.value ? b : a));
-    addStat("HIGH", formatSummaryValue(tracker, high.value), formatBucketLabel(high.date, freq));
-    addStat("LOW", formatSummaryValue(tracker, low.value), formatBucketLabel(low.date, freq));
+    addStat("HIGH" + suffix, formatSummaryValue(tracker, high.value), formatBucketLabel(high.date, freq));
+    addStat("LOW" + suffix, formatSummaryValue(tracker, low.value), formatBucketLabel(low.date, freq));
 
-    // Average movement per day/week/month/year across the tracked span.
+    // Average movement per day/week/month/year across the windowed span.
     const spanDays = dateDiffDays(first.date, last.date);
     if (points.length >= 2 && spanDays > 0) {
       const perUnit = change / (spanDays / FREQ_DAYS[freq]);
-      addStat("AVG Δ / " + FREQ_UNIT[freq].toUpperCase(),
+      addStat("AVG Δ / " + FREQ_UNIT[freq].toUpperCase() + suffix,
         (perUnit >= 0 ? "+" : "") + formatSummaryValue(tracker, perUnit));
     }
 
-    addStat("LOGGED", points.length + (points.length === 1 ? " entry" : " entries"));
+    addStat("LOGGED" + suffix, points.length + (points.length === 1 ? " entry" : " entries"));
   }
 }
 
@@ -988,7 +1008,7 @@ function init() {
     currentRange = btn.dataset.range;
     document.querySelectorAll("#chart-range .range-btn").forEach((b) => b.classList.toggle("active", b === btn));
     const tracker = state.trackers.find((t) => t.id === currentTrackerId);
-    if (tracker) renderChart(tracker);
+    if (tracker) { renderChart(tracker); renderStats(tracker); }
   });
 
   document.getElementById("chart-interval").addEventListener("click", (e) => {
