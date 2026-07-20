@@ -1,4 +1,4 @@
-const CACHE = "ledger-v9";
+const CACHE = "ledger-v10";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,8 +10,19 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (e) => {
+  // Fetch with cache:"no-cache" so a version bump pre-caches truly fresh
+  // files. GitHub Pages serves assets with max-age=600, and plain
+  // cache.addAll() would happily fill the new SW cache from the browser's
+  // stale HTTP cache — shipping a new version label with old code.
   e.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE).then((cache) =>
+      Promise.all(ASSETS.map((u) =>
+        fetch(u, { cache: "no-cache" }).then((res) => {
+          if (!res.ok) throw new Error("precache failed: " + u);
+          return cache.put(u, res);
+        })
+      ))
+    ).then(() => self.skipWaiting())
   );
 });
 
