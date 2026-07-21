@@ -362,7 +362,7 @@ const FREQ_UNIT = { daily: "day", weekly: "wk", monthly: "mo", yearly: "yr" };
 const FREQ_BUCKET_NAME = { daily: "day", weekly: "week", monthly: "month", yearly: "year" };
 
 function rangeStatLabel() {
-  return { 30: "30D", 90: "90D", 365: "1Y", 1095: "3Y", 1825: "5Y" }[currentRange] || "ALL";
+  return { 30: "30D", 90: "90D", 180: "180D", 365: "1Y", 1095: "3Y", 1825: "5Y" }[currentRange] || "ALL";
 }
 
 // Stats follow the chart's selected range: with 1Y active, every stat is
