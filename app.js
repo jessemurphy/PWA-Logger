@@ -30,8 +30,11 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 function todayStr() {
+  // Local calendar date, NOT toISOString (UTC) — after 7pm Central the UTC
+  // date is already tomorrow, which stamped evening logs a day late and
+  // stretched charts one empty day past today.
   const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 /* ---------- helpers ---------- */
@@ -569,12 +572,16 @@ function drawChart(canvas, points, tracker) {
     ctx.fillText(shortNum(v, tracker), padL - 8, y + 3);
   }
 
-  // x labels (start, mid, end)
-  ctx.textAlign = "center";
-  const xIdxs = points.length === 1 ? [0] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
+  // x labels (start, mid, end). Edge labels are edge-aligned: centering
+  // them at the plot's ends ran half the text past the canvas, clipping
+  // "Aug 16" into a phantom "Aug 1".
+  const xIdxs = points.length === 1 ? [0] : [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
   const freq = chartFrequency(tracker);
   xIdxs.forEach((idx) => {
     const x = padL + (points.length === 1 ? plotW / 2 : (idx / (points.length - 1)) * plotW);
+    ctx.textAlign = points.length === 1 ? "center"
+      : idx === 0 ? "left"
+      : idx === points.length - 1 ? "right" : "center";
     ctx.fillText(formatBucketLabel(points[idx].date, freq), x, cssH - 6);
   });
 
