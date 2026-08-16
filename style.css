@@ -275,7 +275,8 @@ input,select{font-family:inherit;}
   color:var(--brass);
   background:rgba(201,162,39,0.08);
 }
-canvas#chart{width:100%;display:block;}
+#chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+canvas#chart{display:block;}
 
 /* Tally view for count trackers */
 .tally-wrap{

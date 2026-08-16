@@ -512,7 +512,15 @@ function renderChart(tracker) {
 
 function drawChart(canvas, points, tracker) {
   const dpr = window.devicePixelRatio || 1;
-  const cssW = canvas.parentElement.clientWidth - 16;
+  const scroller = canvas.parentElement; // #chart-scroll
+  const availW = scroller.clientWidth || scroller.parentElement.clientWidth - 16;
+  const freq = chartFrequency(tracker);
+  // Fine-grained charts get a wider canvas inside a horizontal scroller
+  // instead of cramming years of daily buckets into one screen; coarser
+  // buckets (monthly+) always fit the viewport.
+  const PX_PER_BUCKET = { daily: 4, weekly: 10 };
+  const wanted = points.length * (PX_PER_BUCKET[freq] || 0);
+  const cssW = Math.max(availW, Math.min(wanted, 24000));
   const cssH = 200;
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
@@ -572,20 +580,31 @@ function drawChart(canvas, points, tracker) {
     ctx.fillText(shortNum(v, tracker), padL - 8, y + 3);
   }
 
-  // x labels (start, mid, end). Edge labels are edge-aligned: centering
-  // them at the plot's ends ran half the text past the canvas, clipping
-  // "Aug 16" into a phantom "Aug 1".
-  const xIdxs = points.length === 1 ? [0] : [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
-  const freq = chartFrequency(tracker);
-  xIdxs.forEach((idx) => {
-    const x = padL + (points.length === 1 ? plotW / 2 : (idx / (points.length - 1)) * plotW);
+  // TIME-proportional x positions, not index-based: a point's place on
+  // the axis reflects its actual date, so a one-year gap between entries
+  // is twice as wide as six months instead of one uniform step.
+  const timeOf = (dstr) => { const [y, m, d] = dstr.split("-").map(Number); return new Date(y, m - 1, d).getTime(); };
+  const times = points.map((p) => timeOf(p.date));
+  const t0 = times[0], span = (times[times.length - 1] - t0) || 1;
+  const xFor = (i) => padL + (points.length === 1 ? plotW / 2 : ((times[i] - t0) / span) * plotW);
+
+  // x labels: one per ~110px of plot, snapped to the nearest real point,
+  // edge labels aligned inward so nothing clips at the canvas edge.
+  const nLabels = Math.max(2, Math.min(points.length, Math.floor(plotW / 110) + 1));
+  const labelIdxs = new Set();
+  for (let k = 0; k < nLabels; k++) {
+    const targetT = t0 + (span * k) / (nLabels - 1 || 1);
+    let best = 0;
+    for (let i = 1; i < points.length; i++)
+      if (Math.abs(times[i] - targetT) < Math.abs(times[best] - targetT)) best = i;
+    labelIdxs.add(best);
+  }
+  [...labelIdxs].forEach((idx) => {
     ctx.textAlign = points.length === 1 ? "center"
       : idx === 0 ? "left"
       : idx === points.length - 1 ? "right" : "center";
-    ctx.fillText(formatBucketLabel(points[idx].date, freq), x, cssH - 6);
+    ctx.fillText(formatBucketLabel(points[idx].date, freq), xFor(idx), cssH - 6);
   });
-
-  const xFor = (i) => padL + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
   const yFor = (v) => padT + plotH - ((v - min) / (max - min)) * plotH;
 
   // area fill
@@ -629,6 +648,9 @@ function drawChart(canvas, points, tracker) {
     ctx.strokeStyle = tracker.color;
     ctx.stroke();
   });
+
+  // Wide (scrollable) charts start at the most recent data.
+  if (cssW > availW) scroller.scrollLeft = scroller.scrollWidth;
 }
 
 function shortNum(v, tracker) {
