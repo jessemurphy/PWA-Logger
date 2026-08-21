@@ -370,7 +370,83 @@ function rangeStatLabel() {
 
 // Stats follow the chart's selected range: with 1Y active, every stat is
 // computed over the last year only (ALL behaves as before).
+function dayDiff(a, b) {
+  const [y1, m1, d1] = a.split("-").map(Number);
+  const [y2, m2, d2] = b.split("-").map(Number);
+  return Math.round((new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1)) / 86400000);
+}
+
+// Year-by-year summary under the chart. Occurrence trackers get totals and
+// a per-day rate over the days that year actually covers (first entry ->
+// year end, or Jan 1 -> today for the current year). Snapshot trackers
+// (number/money) get year-end value, change vs the prior year end, and the
+// average of that year's entries.
+function renderYearTable(tracker) {
+  const box = document.getElementById("year-table");
+  const lab = document.getElementById("year-label");
+  if (!box) return;
+  const entries = trackerEntries(tracker.id); // ascending by date
+  const years = new Map();
+  for (const e of entries) {
+    const y = e.date.slice(0, 4);
+    if (!years.has(y)) years.set(y, []);
+    years.get(y).push(e);
+  }
+  if (years.size < 1 || entries.length < 2) {
+    box.innerHTML = ""; lab.classList.add("hidden"); return;
+  }
+  const yrs = [...years.keys()].sort();          // oldest -> newest
+  const todayS = todayStr(), curYear = todayS.slice(0, 4);
+  const rows = [];
+  let header;
+  if (tracker.type === "count") {
+    header = ["Year", "Total", "Per day"];
+    for (const y of yrs) {
+      const es = years.get(y);
+      const total = es.reduce((s, e) => s + Number(e.value), 0);
+      const start = y === yrs[0] ? es[0].date : `${y}-01-01`;
+      const end = y === curYear ? todayS : `${y}-12-31`;
+      const days = Math.max(1, dayDiff(start, end) + 1);
+      rows.push([y, formatSummaryValue(tracker, total),
+        (total / days).toLocaleString(undefined, { maximumFractionDigits: 2 })]);
+    }
+  } else {
+    header = ["Year", "Avg", "End", "Change"];
+    let prevEnd = null;
+    for (const y of yrs) {
+      const es = years.get(y);
+      const endv = Number(es[es.length - 1].value);
+      const avg = es.reduce((s, e) => s + Number(e.value), 0) / es.length;
+      let chg = "—";
+      if (prevEnd !== null) {
+        const d = endv - prevEnd;
+        const cls = d > 0 ? "yr-up" : d < 0 ? "yr-down" : "";
+        chg = `<span class="${cls}" style="flex:none">` +
+          (d > 0 ? "▲ " : d < 0 ? "▼ " : "") +
+          formatSummaryValue(tracker, Math.abs(d)) + "</span>";
+      }
+      rows.push([y, formatSummaryValue(tracker, avg),
+        formatSummaryValue(tracker, endv), chg]);
+      prevEnd = endv;
+    }
+  }
+  rows.reverse();                                 // newest first on screen
+  lab.classList.remove("hidden");
+  box.innerHTML = "";
+  const hd = document.createElement("div");
+  hd.className = "yr-row yr-head";
+  hd.innerHTML = header.map(x => `<span>${x}</span>`).join("");
+  box.appendChild(hd);
+  for (const r of rows) {
+    const d = document.createElement("div");
+    d.className = "yr-row";
+    d.innerHTML = r.map(x => `<span>${x}</span>`).join("");
+    box.appendChild(d);
+  }
+}
+
 function renderStats(tracker) {
+  renderYearTable(tracker);
   const allPoints = aggregate(tracker);
   const ranged = currentRange !== "all";
   const n = Number(currentRange);

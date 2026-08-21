@@ -573,3 +573,15 @@ canvas#chart{display:block;}
 @media (max-width:380px){
   .row-spark{display:none;}
 }
+
+/* by-calendar-year table */
+#year-table{margin:0 0 16px;}
+.yr-row{display:flex;gap:8px;padding:7px 2px;align-items:baseline;
+  border-bottom:1px solid var(--grid-strong);font-family:var(--mono);
+  font-size:14px;font-variant-numeric:tabular-nums;}
+.yr-row span{flex:1;text-align:right;overflow-wrap:anywhere;}
+.yr-row span:first-child{flex:0 0 52px;text-align:left;color:var(--ink-dim);}
+.yr-head{font-family:var(--sans);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--muted);border-bottom:1px solid var(--grid-strong);}
+.yr-up{color:var(--green);}
+.yr-down{color:var(--red);}
