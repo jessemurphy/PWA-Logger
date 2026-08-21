@@ -585,3 +585,6 @@ canvas#chart{display:block;}
   letter-spacing:.1em;color:var(--muted);border-bottom:1px solid var(--grid-strong);}
 .yr-up{color:var(--green);}
 .yr-down{color:var(--red);}
+.yr-click{cursor:pointer;}
+.yr-click:active{background:var(--surface-2);}
+.yr-go{color:var(--muted);text-align:right;}

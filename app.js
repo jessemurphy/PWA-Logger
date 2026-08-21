@@ -6,6 +6,7 @@ const COLORS = ["#C9A227", "#4F9E7A", "#5E8FC9", "#C1554B", "#A97BC9", "#5EC9B4"
 let state = { trackers: [], entries: [] };
 let currentTrackerId = null;
 let currentRange = "all";
+let currentYear = null; // set by tapping a year row — scopes chart/stats to that calendar year
 let currentInterval = "auto"; // chart x-axis bucketing for count trackers: auto|monthly|quarterly|yearly
 let editingTrackerId = null; // set when tracker modal is in edit mode
 let selectedColor = COLORS[0];
@@ -307,6 +308,7 @@ function drawSparkline(canvas, points, color) {
 function openDetail(trackerId) {
   currentTrackerId = trackerId;
   currentRange = "all";
+  currentYear = null;
   currentInterval = "auto";
   location.hash = "#/tracker/" + trackerId;
   showDetailView();
@@ -320,6 +322,10 @@ function showDetailView() {
   document.getElementById("view-detail").classList.remove("hidden");
   document.getElementById("detail-title").textContent = tracker.name;
 
+  document.getElementById("year-bar").classList.toggle("hidden", !currentYear);
+  document.getElementById("chart-range").classList.toggle("hidden", !!currentYear);
+  if (currentYear)
+    document.getElementById("year-exit").textContent = "‹ " + currentYear + " · show all years";
   document.querySelectorAll("#chart-range .range-btn").forEach((b) =>
     b.classList.toggle("active", b.dataset.range === currentRange)
   );
@@ -365,6 +371,7 @@ const FREQ_UNIT = { daily: "day", weekly: "wk", monthly: "mo", yearly: "yr" };
 const FREQ_BUCKET_NAME = { daily: "day", weekly: "week", monthly: "month", yearly: "year" };
 
 function rangeStatLabel() {
+  if (currentYear) return currentYear;
   return { 30: "30D", 90: "90D", 180: "180D", 365: "1Y", 1095: "3Y", 1825: "5Y" }[currentRange] || "ALL";
 }
 
@@ -381,11 +388,14 @@ function dayDiff(a, b) {
 // year end, or Jan 1 -> today for the current year). Snapshot trackers
 // (number/money) get year-end value, change vs the prior year end, and the
 // average of that year's entries.
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun",
+                     "Jul","Aug","Sep","Oct","Nov","Dec"];
 function renderYearTable(tracker) {
   const box = document.getElementById("year-table");
   const lab = document.getElementById("year-label");
   if (!box) return;
   const entries = trackerEntries(tracker.id); // ascending by date
+  if (currentYear) return renderMonthTable(tracker, entries);
   const years = new Map();
   for (const e of entries) {
     const y = e.date.slice(0, 4);
@@ -431,6 +441,7 @@ function renderYearTable(tracker) {
     }
   }
   rows.reverse();                                 // newest first on screen
+  lab.textContent = "By calendar year";
   lab.classList.remove("hidden");
   box.innerHTML = "";
   const hd = document.createElement("div");
@@ -439,18 +450,87 @@ function renderYearTable(tracker) {
   box.appendChild(hd);
   for (const r of rows) {
     const d = document.createElement("div");
+    d.className = "yr-row yr-click";
+    d.innerHTML = r.map(x => `<span>${x}</span>`).join("") +
+      `<span class="yr-go" style="flex:0 0 14px">›</span>`;
+    d.addEventListener("click", () => enterYear(r[0]));
+    box.appendChild(d);
+  }
+}
+
+/* Inside a year: the same table becomes a month-by-month breakdown. */
+function renderMonthTable(tracker, entries) {
+  const box = document.getElementById("year-table");
+  const lab = document.getElementById("year-label");
+  const inYear = entries.filter((e) => e.date.startsWith(currentYear));
+  const months = new Map();
+  for (const e of inYear) {
+    const m = e.date.slice(5, 7);
+    if (!months.has(m)) months.set(m, []);
+    months.get(m).push(e);
+  }
+  lab.textContent = currentYear + " by month";
+  lab.classList.remove("hidden");
+  box.innerHTML = "";
+  const count = tracker.type === "count";
+  const header = count ? ["Month", "Total", "Per day"] : ["Month", "Avg", "End", "Change"];
+  const hd = document.createElement("div");
+  hd.className = "yr-row yr-head";
+  hd.innerHTML = header.map(x => `<span>${x}</span>`).join("");
+  box.appendChild(hd);
+  const todayS = todayStr();
+  const mos = [...months.keys()].sort();
+  let prevEnd = null;
+  const rows = [];
+  for (const m of mos) {
+    const es = months.get(m);
+    const name = MONTH_NAMES[Number(m) - 1];
+    if (count) {
+      const total = es.reduce((s, e) => s + Number(e.value), 0);
+      const start = `${currentYear}-${m}-01`;
+      const endD = new Date(Number(currentYear), Number(m), 0).getDate();
+      const end = todayS < `${currentYear}-${m}-${String(endD).padStart(2, "0")}`
+        ? todayS : `${currentYear}-${m}-${String(endD).padStart(2, "0")}`;
+      const days = Math.max(1, dayDiff(start, end) + 1);
+      rows.push([name, formatSummaryValue(tracker, total),
+        (total / days).toLocaleString(undefined, { maximumFractionDigits: 2 })]);
+    } else {
+      const endv = Number(es[es.length - 1].value);
+      const avg = es.reduce((s, e) => s + Number(e.value), 0) / es.length;
+      let chg = "—";
+      if (prevEnd !== null) {
+        const d = endv - prevEnd;
+        const cls = d > 0 ? "yr-up" : d < 0 ? "yr-down" : "";
+        chg = `<span class="${cls}" style="flex:none">` +
+          (d > 0 ? "▲ " : d < 0 ? "▼ " : "") +
+          formatSummaryValue(tracker, Math.abs(d)) + "</span>";
+      }
+      rows.push([name, formatSummaryValue(tracker, avg),
+        formatSummaryValue(tracker, endv), chg]);
+      prevEnd = endv;
+    }
+  }
+  rows.reverse();                                 // newest month first
+  for (const r of rows) {
+    const d = document.createElement("div");
     d.className = "yr-row";
     d.innerHTML = r.map(x => `<span>${x}</span>`).join("");
     box.appendChild(d);
   }
 }
 
+function enterYear(y) {
+  currentYear = y;
+  showDetailView();
+}
+
 function renderStats(tracker) {
   renderYearTable(tracker);
   const allPoints = aggregate(tracker);
-  const ranged = currentRange !== "all";
+  const ranged = !!currentYear || currentRange !== "all";
   const n = Number(currentRange);
-  const inRange = (d) => !ranged || daysAgo(d) <= n;
+  const inRange = (d) => currentYear ? d.startsWith(currentYear)
+    : (!ranged || daysAgo(d) <= n);
   const points = allPoints.filter((p) => inRange(p.date));
   const strip = document.getElementById("stat-strip");
   strip.innerHTML = "";
@@ -575,6 +655,7 @@ function filteredPoints(tracker) {
   const freq = chartFrequency(tracker);
   let points = aggregate(tracker, freq);
   if (tracker.type === "count") points = zeroFill(points, freq);
+  if (currentYear) return points.filter((p) => p.date.startsWith(currentYear));
   if (currentRange === "all") return points;
   const n = Number(currentRange);
   return points.filter((p) => daysAgo(p.date) <= n);
@@ -1107,6 +1188,10 @@ function init() {
     addCountEntry(amt, date);
   });
 
+  document.getElementById("year-exit").addEventListener("click", () => {
+    currentYear = null;
+    showDetailView();
+  });
   document.getElementById("chart-range").addEventListener("click", (e) => {
     const btn = e.target.closest(".range-btn");
     if (!btn) return;
