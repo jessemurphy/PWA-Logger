@@ -16,8 +16,7 @@ Then open `http://localhost:8080` in Safari/Chrome. On iPhone, use Share → "Ad
 to install it like a native app (works fully offline after the first load).
 
 **Permanent hosting (free, gives you a real URL you can install from any device):**
-- GitHub Pages: push this folder to a repo, enable Pages in Settings → Pages
-- Netlify / Vercel: drag-and-drop the folder in their web dashboard
+- GitHub Pages: deploy from branch `main`, root (how this copy is hosted)
 - Or drop it in any existing static web host you already run
 
 ## How it works
