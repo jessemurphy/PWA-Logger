@@ -568,8 +568,19 @@ function renderStats(tracker) {
     // Rate over the window (first in-range entry through today), expressed in
     // the tracker's own timescale; a daily tracker slower than 1/day flips to
     // the more natural "every N days".
-    let spanDays = Math.max(1, daysAgo(entries[0].date) + 1);
-    if (ranged) spanDays = Math.min(spanDays, n);
+    // Year mode measures within that calendar year: first in-year entry
+    // through today (or Dec 31 for a finished year). The old code clamped
+    // by the chart-range chip left active underneath (n), so 10 entries
+    // across a whole year divided by a 30-day window read "every 3d".
+    let spanDays;
+    if (currentYear) {
+      const yEnd = `${currentYear}-12-31`;
+      const end = todayStr() < yEnd ? todayStr() : yEnd;
+      spanDays = Math.max(1, dateDiffDays(entries[0].date, end) + 1);
+    } else {
+      spanDays = Math.max(1, daysAgo(entries[0].date) + 1);
+      if (ranged) spanDays = Math.min(spanDays, n);
+    }
     const perDay = total / spanDays;
     if (freq === "daily" && perDay < 1 && total > 0) {
       addStat("FREQUENCY" + suffix, `every ${Math.round(spanDays / total)}d`);

@@ -1,4 +1,4 @@
-const CACHE = "ledger-v15";
+const CACHE = "ledger-v16";
 const ASSETS = [
   "./",
   "./index.html",
