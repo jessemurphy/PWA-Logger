@@ -565,20 +565,33 @@ function renderStats(tracker) {
       addStat("LAST 30D", formatSummaryValue(tracker, last30));
     }
 
-    // Rate over the window (first in-range entry through today), expressed in
-    // the tracker's own timescale; a daily tracker slower than 1/day flips to
-    // the more natural "every N days".
-    // Year mode measures within that calendar year: first in-year entry
-    // through today (or Dec 31 for a finished year). The old code clamped
-    // by the chart-range chip left active underneath (n), so 10 entries
-    // across a whole year divided by a 30-day window read "every 3d".
+    // Rate over the window, expressed in the tracker's own timescale; a daily
+    // tracker slower than 1/day flips to the more natural "every N days".
+    //
+    // THE DENOMINATOR IS THE WHOLE WINDOW, capped only by how long this
+    // tracker has existed. It used to start at the first entry INSIDE the
+    // window, which silently threw away the empty stretch before it: five
+    // cups over 180 days, the first on May 2, divided by 137 rather than 180
+    // and reported "every 27d" under a heading reading 180D. A figure printed
+    // under that heading is a claim about those 180 days. It also disagreed
+    // with the by-calendar-year table directly beneath it, which has always
+    // divided by the full year (2026: 10 entries over 258 elapsed days).
+    //
+    // The clamp is what that rule was really protecting and it is kept — a
+    // tracker created ten days ago must not read "every 73d" against a 1Y
+    // range merely because the range is long. But it clamps to the FIRST-EVER
+    // entry: before that there was no tracker, and after it a gap is a real
+    // gap the statistic should feel.
+    const firstEver = allEntries[0].date;
     let spanDays;
     if (currentYear) {
+      const yStart = `${currentYear}-01-01`;
+      const start = firstEver > yStart ? firstEver : yStart;
       const yEnd = `${currentYear}-12-31`;
       const end = todayStr() < yEnd ? todayStr() : yEnd;
-      spanDays = Math.max(1, dateDiffDays(entries[0].date, end) + 1);
+      spanDays = Math.max(1, dateDiffDays(start, end) + 1);
     } else {
-      spanDays = Math.max(1, daysAgo(entries[0].date) + 1);
+      spanDays = Math.max(1, daysAgo(firstEver) + 1);
       if (ranged) spanDays = Math.min(spanDays, n);
     }
     const perDay = total / spanDays;
