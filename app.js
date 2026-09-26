@@ -699,8 +699,16 @@ function drawChart(canvas, points, tracker) {
   // Fine-grained charts get a wider canvas inside a horizontal scroller
   // instead of cramming years of daily buckets into one screen; coarser
   // buckets (monthly+) always fit the viewport.
+  //
+  // WIDTH FOLLOWS THE DATA, NOT THE RANGE. Sizing by bucket count meant a
+  // year of daily buckets always demanded 1460px whatever was in it, so a
+  // tracker with thirteen entries scrolled to its last quarter and hid nine
+  // months of the gaps that are the whole reason to look at a year. zeroFill
+  // makes every quiet day a bucket, and a quiet day is a flat line at any
+  // width — only the buckets that actually carry something need room.
   const PX_PER_BUCKET = { daily: 4, weekly: 10 };
-  const wanted = points.length * (PX_PER_BUCKET[freq] || 0);
+  const busy = points.reduce((n, p) => n + (p.value ? 1 : 0), 0);
+  const wanted = busy * (PX_PER_BUCKET[freq] || 0);
   const cssW = Math.max(availW, Math.min(wanted, 24000));
   const cssH = 200;
   canvas.style.width = cssW + "px";

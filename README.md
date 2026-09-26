@@ -39,3 +39,15 @@ to install it like a native app (works fully offline after the first load).
 - `index.html` / `style.css` / `app.js` — the app
 - `manifest.json` / `sw.js` — makes it installable + offline-capable
 - `icons/` — app icons
+
+## Why a chart sometimes scrolls
+
+A fine-grained chart gets a canvas wider than the screen, inside a horizontal
+scroller, so busy data has room to show its shape. The width follows **how much
+data there is, not how long the range is** — every quiet day is a real bucket
+(see `zeroFill`), and a quiet day is a flat line at any width.
+
+Sizing it by bucket count instead meant a year of daily buckets always demanded
+1460px whatever was in it: a tracker with thirteen entries opened scrolled to
+its last quarter, hiding nine months of the gaps that are the whole reason to
+look at a year. The ALL range was worse — 2% of the history on screen.
