@@ -325,7 +325,7 @@ function showDetailView() {
   document.getElementById("year-bar").classList.toggle("hidden", !currentYear);
   document.getElementById("chart-range").classList.toggle("hidden", !!currentYear);
   if (currentYear)
-    document.getElementById("year-exit").textContent = "‹ " + currentYear + " · show all years";
+    document.getElementById("year-exit").textContent = currentYear + " · show all years";
   document.querySelectorAll("#chart-range .range-btn").forEach((b) =>
     b.classList.toggle("active", b.dataset.range === currentRange)
   );
@@ -395,17 +395,18 @@ function renderYearTable(tracker) {
   const lab = document.getElementById("year-label");
   if (!box) return;
   const entries = trackerEntries(tracker.id); // ascending by date
-  if (currentYear) return renderMonthTable(tracker, entries);
   const years = new Map();
   for (const e of entries) {
     const y = e.date.slice(0, 4);
     if (!years.has(y)) years.set(y, []);
     years.get(y).push(e);
   }
+  const yrs = [...years.keys()].sort();          // oldest -> newest, years with data only
+  updateYearNav(yrs);
+  if (currentYear) return renderMonthTable(tracker, entries);
   if (years.size < 1 || entries.length < 2) {
     box.innerHTML = ""; lab.classList.add("hidden"); return;
   }
-  const yrs = [...years.keys()].sort();          // oldest -> newest
   const todayS = todayStr(), curYear = todayS.slice(0, 4);
   const rows = [];
   let header;
@@ -522,6 +523,22 @@ function renderMonthTable(tracker, entries) {
 function enterYear(y) {
   currentYear = y;
   showDetailView();
+}
+
+// Flanks the year-exit button with prev/next arrows that step between
+// calendar years that actually have entries (the same set the "By calendar
+// year" table lists) -- never onto a year with nothing logged in it.
+function updateYearNav(yrs) {
+  const prevBtn = document.getElementById("year-prev");
+  const nextBtn = document.getElementById("year-next");
+  if (!prevBtn || !nextBtn) return;
+  const idx = currentYear ? yrs.indexOf(currentYear) : -1;
+  const prevYear = idx > 0 ? yrs[idx - 1] : null;
+  const nextYear = idx !== -1 && idx < yrs.length - 1 ? yrs[idx + 1] : null;
+  prevBtn.disabled = !prevYear;
+  nextBtn.disabled = !nextYear;
+  prevBtn.dataset.year = prevYear || "";
+  nextBtn.dataset.year = nextYear || "";
 }
 
 function renderStats(tracker) {
@@ -1223,6 +1240,14 @@ function init() {
   document.getElementById("year-exit").addEventListener("click", () => {
     currentYear = null;
     showDetailView();
+  });
+  document.getElementById("year-prev").addEventListener("click", (e) => {
+    const y = e.currentTarget.dataset.year;
+    if (y) enterYear(y);
+  });
+  document.getElementById("year-next").addEventListener("click", (e) => {
+    const y = e.currentTarget.dataset.year;
+    if (y) enterYear(y);
   });
   document.getElementById("chart-range").addEventListener("click", (e) => {
     const btn = e.target.closest(".range-btn");

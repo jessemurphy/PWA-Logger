@@ -275,6 +275,10 @@ input,select{font-family:inherit;}
   color:var(--brass);
   background:rgba(201,162,39,0.08);
 }
+.range-btn:disabled{
+  opacity:0.35;
+  cursor:default;
+}
 #chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 canvas#chart{display:block;}
 
